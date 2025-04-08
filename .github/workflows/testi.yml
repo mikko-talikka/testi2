@@ -1,1 +1,75 @@
+name: Label & comment issues # the name of the workflow
+
+on:
+  issues:
+    types:
+      - reopened
+      - opened
+      - closed # lisätty: käynnistää työn myös kun issue suljetaan
+  pull_request:
+    types:
+      - opened # käynnistyy kun PR avataan
+
+jobs:
+  handle_issues_and_prs:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      # Lisää label ja kommentoi kun issue avataan tai uudelleen avataan
+      - name: Attach label to issues
+        if: github.event_name == 'issues' && (github.event.action == 'opened' || github.event.action == 'reopened')
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ["issue", "fix"]
+            })
+
+      - name: Comment on new issue
+        if: github.event_name == 'issues' && (github.event.action == 'opened' || github.event.action == 'reopened')
+        uses: peter-evans/create-or-update-comment@v1
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            Thanks for opening this issue! We'll take a look as soon as possible.
+
+      # Kommentti kun issue suljetaan
+      - name: Comment when issue is closed
+        if: github.event_name == 'issues' && github.event.action == 'closed'
+        uses: peter-evans/create-or-update-comment@v1
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            The issue is now resolved.
+
+      # Onnittelut kun käyttäjä avaa ensimmäisen pull requestin
+      - name: Congratulate on first pull request
+        if: github.event_name == 'pull_request' && github.event.action == 'opened'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "all",
+              per_page: 100
+            });
+
+            const user = context.payload.pull_request.user.login;
+            const userPulls = pulls.filter(pr => pr.user.login === user);
+
+            if (userPulls.length === 1) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `🎉 Congratulations @${user} on opening your first pull request! Thank you for contributing!`
+              });
+            }
 
